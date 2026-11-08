@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "107260295819",
+    "project_id": "flutter-mifirebase",
+    "storage_bucket": "flutter-mifirebase.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:107260295819:android:48901a077fcae75c80328e",
+        "android_client_info": {
+          "package_name": "com.mifirebase.appfirebase"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD06z6fx_1aQ-L6bE8RxoiemwfqYFIjGt8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:107260295819:android:45a4c3c5faff867680328e",
+        "android_client_info": {
+          "package_name": "mx.ucol.petcare_smart_app_mk2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD06z6fx_1aQ-L6bE8RxoiemwfqYFIjGt8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,12 +1,21 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'auth_page.dart';
 import 'ble_service.dart';
+import 'firebase_options.dart';
 
 final PetStationService servicio = PetStationService();
 
-void main() => runApp(const PetStationApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const PetStationApp());
+}
 
 class PetStationApp extends StatelessWidget {
   const PetStationApp({super.key});
@@ -17,12 +26,17 @@ class PetStationApp extends StatelessWidget {
       title: 'PetStation',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-      darkTheme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true, brightness: Brightness.dark),
-      home: ListenableBuilder(
-        listenable: servicio,
-        builder: (context, _) => servicio.estado == EstadoConexion.conectado
-            ? const DashboardPage()
-            : const ScanPage(),
+      darkTheme: ThemeData(
+          colorSchemeSeed: Colors.teal,
+          useMaterial3: true,
+          brightness: Brightness.dark),
+      home: AuthGate(
+        child: ListenableBuilder(
+          listenable: servicio,
+          builder: (context, _) => servicio.estado == EstadoConexion.conectado
+              ? const DashboardPage()
+              : const ScanPage(),
+        ),
       ),
     );
   }
@@ -59,6 +73,10 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Future<bool> _permisos() async {
+    // Web Bluetooth pide el permiso mediante el selector del navegador.
+    // permission_handler es para Android/iOS y puede fallar en Flutter Web.
+    if (kIsWeb) return true;
+
     final r = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
@@ -129,7 +147,9 @@ class _ScanPageState extends State<ScanPage> {
                   color: Theme.of(context).colorScheme.errorContainer,
                   padding: const EdgeInsets.all(12),
                   child: Text(servicio.ultimoError!,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer)),
+                      style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer)),
                 ),
               SwitchListTile(
                 title: const Text('Mostrar todos los dispositivos'),
@@ -169,11 +189,15 @@ class _ScanPageState extends State<ScanPage> {
                         final r = lista[i];
                         final esNuestra = _nombre(r) == 'PetStation';
                         return ListTile(
-                          leading: Icon(esNuestra ? Icons.pets : Icons.bluetooth),
+                          leading:
+                              Icon(esNuestra ? Icons.pets : Icons.bluetooth),
                           title: Text(_nombre(r)),
-                          subtitle: Text('${r.device.remoteId.str}   ${r.rssi} dBm'),
+                          subtitle:
+                              Text('${r.device.remoteId.str}   ${r.rssi} dBm'),
                           trailing: FilledButton(
-                            onPressed: conectando ? null : () => servicio.conectar(r.device),
+                            onPressed: conectando
+                                ? null
+                                : () => servicio.conectar(r.device),
                             child: const Text('Conectar'),
                           ),
                         );
@@ -233,6 +257,14 @@ class DashboardPage extends StatelessWidget {
                 icon: const Icon(Icons.bluetooth_disabled),
                 onPressed: servicio.desconectar,
               ),
+              IconButton(
+                tooltip: 'Cerrar sesión',
+                icon: const Icon(Icons.logout),
+                onPressed: () async {
+                  await servicio.desconectar();
+                  await FirebaseAuth.instance.signOut();
+                },
+              ),
             ],
           ),
           body: ListView(
@@ -242,9 +274,15 @@ class DashboardPage extends StatelessWidget {
                 icono: Icons.bluetooth_connected,
                 titulo: 'Estación',
                 hijos: [
-                  _Fila('Estado', servicio.estadoEstacion ?? 'conectado por Bluetooth'),
-                  _Fila('Mascota (RFID UHF)', uhf ? 'Detectada' : 'No detectada'),
-                  _Fila('Última lectura', s == null ? 'esperando datos...' : _hora(servicio.ultimaActualizacion)),
+                  _Fila('Estado',
+                      servicio.estadoEstacion ?? 'conectado por Bluetooth'),
+                  _Fila(
+                      'Mascota (RFID UHF)', uhf ? 'Detectada' : 'No detectada'),
+                  _Fila(
+                      'Última lectura',
+                      s == null
+                          ? 'esperando datos...'
+                          : _hora(servicio.ultimaActualizacion)),
                 ],
               ),
               _tarjetaWifi(context, servicio.wifi),
@@ -256,10 +294,13 @@ class DashboardPage extends StatelessWidget {
                     etiqueta: 'Contenedor',
                     pct: _n(s, 'contenedor_pct'),
                     alerta: s?['contenedor_vacio'] == true,
-                    textoAlerta: s?['contenedor_ok'] == false ? 'Sin lectura del sensor' : 'Contenedor vacío',
+                    textoAlerta: s?['contenedor_ok'] == false
+                        ? 'Sin lectura del sensor'
+                        : 'Contenedor vacío',
                   ),
                   _Fila('Plato', '${_fmt(_n(s, 'plato_comida_g'))} g'),
-                  _Fila('Tornillo sin fin', tornilloOn ? 'Girando' : 'Detenido'),
+                  _Fila(
+                      'Tornillo sin fin', tornilloOn ? 'Girando' : 'Detenido'),
                   _Fila('Modo', '${s?['modo_puerta'] ?? '--'}'),
                   _Botones(
                     onEncender: () => servicio.setTornillo(true),
@@ -275,7 +316,9 @@ class DashboardPage extends StatelessWidget {
                     etiqueta: 'Tanque',
                     pct: _n(s, 'tanque_pct'),
                     alerta: s?['tanque_vacio'] == true,
-                    textoAlerta: s?['tanque_ok'] == false ? 'Sin lectura del sensor' : 'Tanque vacío',
+                    textoAlerta: s?['tanque_ok'] == false
+                        ? 'Sin lectura del sensor'
+                        : 'Tanque vacío',
                   ),
                   _Fila('Plato', '${_fmt(_n(s, 'plato_agua_g'))} g'),
                   _Fila('Bomba', bombaOn ? 'Encendida' : 'Apagada'),
@@ -286,8 +329,10 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ],
               ),
-              _tarjetaPrograma(context, 'comida', 'Programa de comida', Icons.schedule, p),
-              _tarjetaPrograma(context, 'agua', 'Programa de agua', Icons.schedule, p),
+              _tarjetaPrograma(
+                  context, 'comida', 'Programa de comida', Icons.schedule, p),
+              _tarjetaPrograma(
+                  context, 'agua', 'Programa de agua', Icons.schedule, p),
               const _ConsolaCard(),
             ],
           ),
@@ -311,10 +356,20 @@ class DashboardPage extends StatelessWidget {
       titulo: 'WiFi de la estación',
       hijos: [
         _Fila('Red', ssid.isEmpty ? '--' : ssid),
-        _Fila('Estado', probando ? 'Probando red nueva...' : (w == null ? '--' : (conectado ? 'Conectado' : 'Sin conexión'))),
+        _Fila(
+            'Estado',
+            probando
+                ? 'Probando red nueva...'
+                : (w == null
+                    ? '--'
+                    : (conectado ? 'Conectado' : 'Sin conexión'))),
         _Fila('IP', conectado ? '${w?['ip']}' : '--'),
         _Fila('Señal', conectado ? '${w?['rssi']} dBm' : '--'),
-        _Fila('Servidor MQTT', w == null ? '--' : (w['mqtt'] == true ? 'Conectado' : 'Sin conexión')),
+        _Fila(
+            'Servidor MQTT',
+            w == null
+                ? '--'
+                : (w['mqtt'] == true ? 'Conectado' : 'Sin conexión')),
         Align(
           alignment: Alignment.centerRight,
           child: OutlinedButton.icon(
@@ -343,7 +398,8 @@ class DashboardPage extends StatelessWidget {
               TextField(
                 controller: ssid,
                 autocorrect: false,
-                decoration: const InputDecoration(labelText: 'Nombre de la red (SSID)'),
+                decoration:
+                    const InputDecoration(labelText: 'Nombre de la red (SSID)'),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -353,7 +409,8 @@ class DashboardPage extends StatelessWidget {
                 enableSuggestions: false,
                 decoration: InputDecoration(
                   labelText: 'Contraseña',
-                  helperText: 'De 8 a 63 caracteres. Vacía si la red es abierta.',
+                  helperText:
+                      'De 8 a 63 caracteres. Vacía si la red es abierta.',
                   suffixIcon: IconButton(
                     icon: Icon(ver ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setState(() => ver = !ver),
@@ -363,8 +420,12 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Enviar')),
           ],
         ),
       ),
@@ -382,7 +443,8 @@ class DashboardPage extends StatelessWidget {
       error = 'La contraseña debe tener de 8 a 63 caracteres';
     }
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     final enviado = await servicio.configurarWifi(red, pass);
@@ -394,18 +456,27 @@ class DashboardPage extends StatelessWidget {
     ));
   }
 
-  Widget _tarjetaPrograma(BuildContext context, String clave, String titulo, IconData icono, Map<String, dynamic>? p) {
-    final d = p?[clave] is Map<String, dynamic> ? p![clave] as Map<String, dynamic> : null;
+  Widget _tarjetaPrograma(BuildContext context, String clave, String titulo,
+      IconData icono, Map<String, dynamic>? p) {
+    final d = p?[clave] is Map<String, dynamic>
+        ? p![clave] as Map<String, dynamic>
+        : null;
     final unidad = d?['unidad'] ?? (clave == 'comida' ? 'g' : 'ml');
     final dispensando = d?['dispensando'] == true;
     return _Tarjeta(
       icono: icono,
       titulo: titulo,
       hijos: [
-        _Fila('Cantidad', d == null ? '--' : '${_fmt(_n(d, 'cantidad'))} $unidad'),
+        _Fila('Cantidad',
+            d == null ? '--' : '${_fmt(_n(d, 'cantidad'))} $unidad'),
         _Fila('Cada', _duracion(_n(d, 'intervalo_s'))),
-        _Fila('Siguiente en', dispensando ? 'Dispensando ahora...' : _duracion(_n(d, 'proximo_s'))),
-        _Fila('Último entregado', d == null ? '--' : '${_fmt(_n(d, 'ultimo_entregado'))} $unidad'),
+        _Fila(
+            'Siguiente en',
+            dispensando
+                ? 'Dispensando ahora...'
+                : _duracion(_n(d, 'proximo_s'))),
+        _Fila('Último entregado',
+            d == null ? '--' : '${_fmt(_n(d, 'ultimo_entregado'))} $unidad'),
         Align(
           alignment: Alignment.centerRight,
           child: OutlinedButton.icon(
@@ -418,12 +489,16 @@ class DashboardPage extends StatelessWidget {
     );
   }
 
-  Future<void> _editarPrograma(BuildContext context, String clave, String titulo, Map<String, dynamic>? actual) async {
+  Future<void> _editarPrograma(BuildContext context, String clave,
+      String titulo, Map<String, dynamic>? actual) async {
     final unidad = clave == 'comida' ? 'g' : 'ml';
-    final cantidad = TextEditingController(text: _n(actual, 'cantidad')?.toStringAsFixed(0) ?? '');
+    final cantidad = TextEditingController(
+        text: _n(actual, 'cantidad')?.toStringAsFixed(0) ?? '');
     final intervaloS = _n(actual, 'intervalo_s');
     final intervalo = TextEditingController(
-        text: intervaloS == null ? '' : (intervaloS / 60).toStringAsFixed(intervaloS % 60 == 0 ? 0 : 1));
+        text: intervaloS == null
+            ? ''
+            : (intervaloS / 60).toStringAsFixed(intervaloS % 60 == 0 ? 0 : 1));
 
     final ok = await showDialog<bool>(
       context: context,
@@ -434,16 +509,19 @@ class DashboardPage extends StatelessWidget {
           children: [
             TextField(
               controller: cantidad,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
                 labelText: 'Cantidad por ración ($unidad)',
-                helperText: clave == 'comida' ? 'De 5 a 200 g' : 'De 20 a 500 ml',
+                helperText:
+                    clave == 'comida' ? 'De 5 a 200 g' : 'De 20 a 500 ml',
               ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: intervalo,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Intervalo (minutos)',
                 helperText: 'De 0.5 min a 1440 min (24 h)',
@@ -452,8 +530,12 @@ class DashboardPage extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enviar')),
         ],
       ),
     );
@@ -462,7 +544,8 @@ class DashboardPage extends StatelessWidget {
     final c = double.tryParse(cantidad.text.trim().replaceAll(',', '.'));
     final i = double.tryParse(intervalo.text.trim().replaceAll(',', '.'));
     if (c == null || i == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Escribe números válidos')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Escribe números válidos')));
       return;
     }
     await servicio.configurar(clave, c, i);
@@ -474,7 +557,8 @@ class _Tarjeta extends StatelessWidget {
   final IconData icono;
   final String titulo;
   final List<Widget> hijos;
-  const _Tarjeta({required this.icono, required this.titulo, required this.hijos});
+  const _Tarjeta(
+      {required this.icono, required this.titulo, required this.hijos});
 
   @override
   Widget build(BuildContext context) {
@@ -510,7 +594,10 @@ class _Fila extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(etiqueta),
-        Flexible(child: Text(valor, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600))),
+        Flexible(
+            child: Text(valor,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w600))),
       ],
     );
   }
@@ -521,7 +608,11 @@ class _Nivel extends StatelessWidget {
   final double? pct;
   final bool alerta;
   final String textoAlerta;
-  const _Nivel({required this.etiqueta, required this.pct, required this.alerta, required this.textoAlerta});
+  const _Nivel(
+      {required this.etiqueta,
+      required this.pct,
+      required this.alerta,
+      required this.textoAlerta});
 
   @override
   Widget build(BuildContext context) {
@@ -533,7 +624,8 @@ class _Nivel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(etiqueta),
-            Text('${_fmt(pct, 0)} %', style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text('${_fmt(pct, 0)} %',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
           ],
         ),
         const SizedBox(height: 4),
@@ -546,7 +638,8 @@ class _Nivel extends StatelessWidget {
         if (alerta)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(textoAlerta, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+            child: Text(textoAlerta,
+                style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           ),
       ],
     );
@@ -618,7 +711,8 @@ class _ConsolaCardState extends State<_ConsolaCard> {
               child: TextField(
                 controller: _texto,
                 decoration: const InputDecoration(
-                  hintText: 'puerta ON  /  bomba OFF  /  comida {"cantidad":40}',
+                  hintText:
+                      'puerta ON  /  bomba OFF  /  comida {"cantidad":40}',
                   isDense: true,
                 ),
                 onSubmitted: (_) => _enviar(),
@@ -631,7 +725,8 @@ class _ConsolaCardState extends State<_ConsolaCard> {
           const Text('Sin eventos todavía')
         else
           for (final e in eventos)
-            Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            Text(e,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
       ],
     );
   }
